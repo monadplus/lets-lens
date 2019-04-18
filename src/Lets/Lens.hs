@@ -82,7 +82,7 @@ import qualified Data.Map as Map(insert, delete, lookup)
 import Data.Monoid(Monoid)
 import qualified Data.Set as Set(Set, insert, delete, member)
 import Data.Traversable(Traversable(traverse))
-import Lets.Data(AlongsideLeft(AlongsideLeft, getAlongsideLeft), AlongsideRight(AlongsideRight, getAlongsideRight), Identity(Identity, getIdentity), Const(Const, getConst), Tagged(Tagged, getTagged), IntOr(IntOrIs, IntOrIsNot), IntAnd(IntAnd), Person(Person), Locality(Locality), Address(Address), bool)
+import Lets.Data(AlongsideLeft(AlongsideLeft, getAlongsideLeft), AlongsideRight(AlongsideRight, getAlongsideRight), Identity(Identity, getIdentity), Const(Const, getConst), Tagged(Tagged, getTagged), IntOr(IntOrIs, IntOrIsNot), IntAnd(IntAnd), Person(Person), Locality(Locality), Address(Address))
 import Lets.Choice(Choice(left, right))
 import Lets.Profunctor(Profunctor(dimap))
 import Prelude hiding (product)
@@ -90,6 +90,7 @@ import Prelude hiding (product)
 -- $setup
 -- >>> import qualified Data.Map as Map(fromList)
 -- >>> import qualified Data.Set as Set(fromList)
+-- >>> import Data.Bool(bool)
 -- >>> import Data.Char(ord)
 -- >>> import Lets.Data
 
@@ -796,13 +797,13 @@ intOrP =
 
 -- |
 --
--- >> over intOrP (even . length) (IntOrIsNot "abc")
+-- >> intOrLengthEven (IntOrIsNot "abc")
 -- IntOrIsNot False
 --
--- >>> over intOrP (even . length) (IntOrIsNot "abcd")
+-- >>> intOrLengthEven (IntOrIsNot "abcd")
 -- IntOrIsNot True
 --
--- >>> over intOrP (even . length) (IntOrIs 10)
+-- >>> intOrLengthEven (IntOrIs 10)
 -- IntOrIs 10
 intOrLengthEven ::
   IntOr [a]
