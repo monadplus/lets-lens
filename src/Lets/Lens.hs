@@ -73,7 +73,7 @@ module Lets.Lens (
 , intOrLengthEven
 ) where
 
-import Control.Applicative(Applicative((<*>), pure))
+import Control.Applicative(Applicative((<*>), pure), liftA2)
 import Data.Char(toUpper)
 import Data.Foldable(Foldable(foldMap))
 import Data.Functor((<$>))
@@ -110,8 +110,8 @@ fmapT ::
   (a -> b)
   -> t a
   -> t b
-fmapT =
-  error "todo: fmapT"
+fmapT f =
+  getIdentity . traverse (Identity . f)
 
 -- | Let's refactor out the call to @traverse@ as an argument to @fmapT@.
 over :: 
@@ -119,8 +119,9 @@ over ::
   -> (a -> b)
   -> s
   -> t
-over =
-  error "todo: over"
+over f g =
+  getIdentity . f (Identity . g)
+  
 
 -- | Here is @fmapT@ again, passing @traverse@ to @over@.
 fmapTAgain ::
@@ -129,9 +130,11 @@ fmapTAgain ::
   -> t a
   -> t b
 fmapTAgain =
-  error "todo: fmapTAgain"
+  -- over mapped (over sets = id)
+  over traverse
 
 -- | Let's create a type-alias for this type of function.
+-- Generalized functor
 type Set s t a b =
   (a -> Identity b)
   -> s
@@ -142,35 +145,40 @@ type Set s t a b =
 sets ::
   ((a -> b) -> s -> t)
   -> Set s t a b  
-sets =
-  error "todo: sets"
+sets f g = 
+  Identity . f (getIdentity . g)
+  
 
 mapped ::
   Functor f =>
   Set (f a) (f b) a b
 mapped =
-  error "todo: mapped"
+  sets fmap
 
+-- >>> set _2 "hello" (1,())
 set ::
   Set s t a b
   -> s
   -> b
   -> t
-set =
-  error "todo: set"
+set f s b =
+  getIdentity $ f (const (Identity b)) s  
 
 ----
 
 -- | Observe that @foldMap@ can be recovered from @traverse@ using @Const@.
---
+--   The instance of applicative for Const m a is:
+--      pure _ = Const mempty
+--      (<*>) m n = Const $ getConst m <> getConst n 
+
 -- /Reminder:/ foldMap :: (Foldable t, Monoid b) => (a -> b) -> t a -> b
 foldMapT ::
   (Traversable t, Monoid b) =>
   (a -> b)
   -> t a
   -> b
-foldMapT =
-  error "todo: foldMapT"
+foldMapT f =
+  getConst . traverse (Const . f) 
 
 -- | Let's refactor out the call to @traverse@ as an argument to @foldMapT@.
 foldMapOf ::
@@ -178,8 +186,8 @@ foldMapOf ::
   -> (a -> r)
   -> s
   -> r
-foldMapOf =
-  error "todo: foldMapOf"
+foldMapOf f g =
+  getConst . f (Const . g)
 
 -- | Here is @foldMapT@ again, passing @traverse@ to @foldMapOf@.
 foldMapTAgain ::
@@ -188,7 +196,7 @@ foldMapTAgain ::
   -> t a
   -> b
 foldMapTAgain =
-  error "todo: foldMapTAgain"
+  foldMapOf traverse
 
 -- | Let's create a type-alias for this type of function.
 type Fold s t a b =
@@ -205,14 +213,15 @@ folds ::
   -> (a -> Const b a)
   -> s
   -> Const t s
-folds =
-  error "todo: folds"
+folds f g = 
+  Const . f (getConst . g)
+  
 
 folded ::
   Foldable f =>
   Fold (f a) (f a) a a
 folded =
-  error "todo: folded"
+  folds foldMap
 
 ----
 
@@ -226,8 +235,8 @@ get ::
   Get a s a
   -> s
   -> a
-get =
-  error "todo: get"
+get f =
+  getConst . f (Const . id)
 
 ----
 
@@ -242,20 +251,22 @@ type Traversal s t a b =
 -- | Traverse both sides of a pair.
 both ::
   Traversal (a, a) (b, b) a b
-both =
-  error "todo: both"
-
+both f (a, a') = 
+  (,) <$> f a <*> f a'
+  
 -- | Traverse the left side of @Either@.
 traverseLeft ::
   Traversal (Either a x) (Either b x) a b
-traverseLeft =
-  error "todo: traverseLeft"
+traverseLeft f (Left a) = Left <$> f a
+traverseLeft _ (Right x) = pure $ Right x
+  
 
 -- | Traverse the right side of @Either@.
 traverseRight ::
   Traversal (Either x a) (Either x b) a b
-traverseRight =
-  error "todo: traverseRight"
+traverseRight f (Right a) = Right <$> f a
+traverseRight _ (Left x) = pure $ Left x
+  
 
 type Traversal' a b =
   Traversal a a b b
@@ -286,36 +297,38 @@ type Prism s t a b =
 _Left ::
   Prism (Either a x) (Either b x) a b
 _Left =
-  error "todo: _Left"
+  prism Left $ either Right (Left . Right)
+
 
 _Right ::
   Prism (Either x a) (Either x b) a b 
 _Right =
-  error "todo: _Right"
+  prism Right $ either (Left . Left) Right
 
 prism ::
   (b -> t)
   -> (s -> Either t a)
   -> Prism s t a b
-prism =
-  error "todo: prism"
-
+prism bt seta =
+  dimap seta (either pure (fmap bt)) . right
+  
+  
 _Just ::
   Prism (Maybe a) (Maybe b) a b
 _Just =
-  error "todo: _Just"
+  prism Just $ maybe (Left Nothing) Right
 
 _Nothing ::
   Prism (Maybe a) (Maybe a) () ()
 _Nothing =
-  error "todo: _Nothing"
+  prism (const Nothing) $ maybe (Left Nothing) (const $ Right ())
 
 setP ::
   Prism s t a b
   -> s
   -> Either t a
-setP _ _ =
-  error "todo: setP"
+setP _ =
+  error "todo"
 
 getP ::
   Prism s t a b
