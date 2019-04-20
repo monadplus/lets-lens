@@ -1,5 +1,6 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE LambdaCase #-}
 
 module Lets.Lens (
   fmapT
@@ -87,7 +88,7 @@ import Lets.Data(AlongsideLeft(AlongsideLeft, getAlongsideLeft), AlongsideRight(
 import Lets.Choice(Choice(left, right))
 import Lets.Profunctor(Profunctor(dimap))
 import Prelude hiding (product)
-
+import Data.Bool(bool)
 -- $setup
 -- >>> import qualified Data.Map as Map(fromList)
 -- >>> import qualified Data.Set as Set(fromList)
@@ -495,12 +496,20 @@ sndL p (x, a) =
 --
 -- >>> set (mapL 33) (Map.fromList (map (\c -> (ord c - 96, c)) ['a'..'d'])) Nothing
 -- fromList [(1,'a'),(2,'b'),(3,'c'),(4,'d')]
+
+-- Allows to lookup, insert and delete.
 mapL ::
   Ord k =>
   k
-  -> Lens (Map k v) (Map k v) (Maybe v) (Maybe v)
-mapL =
-  error "todo: mapL"
+  -> Lens (Map k v) (Map k v) (Maybe v) (Maybe v)  
+mapL k p m =
+  let z = Map.lookup k m
+  in fmap (\case
+    Just v -> Map.insert k v m
+    Nothing -> case z of
+      Just _ -> Map.delete k m
+      Nothing -> m) (p z)
+
 
 -- |
 --
@@ -520,19 +529,24 @@ mapL =
 --
 -- >>> set (setL 3) (Set.fromList [1..5]) False
 -- fromList [1,2,4,5]
+
 --
 -- >>> set (setL 33) (Set.fromList [1..5]) True
 -- fromList [1,2,3,4,5,33]
 --
 -- >>> set (setL 33) (Set.fromList [1..5]) False
 -- fromList [1,2,3,4,5]
-setL ::
-  Ord k =>
-  k
-  -> Lens (Set.Set k) (Set.Set k) Bool Bool
-setL =
-  error "todo: setL"
 
+-- wrong
+-- set (setL 3) (Set.fromList [1..5]) False
+-- error : [1,2,3,4,5]
+
+setL :: Ord k => k -> Lens (Set.Set k) (Set.Set k) Bool Bool
+setL k p s =
+  let z = Set.member k s
+  in fmap (\b -> bool Set.delete Set.insert b k s) (p z)
+  
+    
 -- |
 --
 -- >>> get (compose fstL sndL) ("abc", (7, "def"))
@@ -544,8 +558,8 @@ compose ::
   Lens s t a b
   -> Lens q r s t
   -> Lens q r a b
-compose _ _ =
-  error "todo: compose"
+compose = 
+  flip (.)
 
 -- | An alias for @compose@.
 (|.) ::
@@ -566,8 +580,7 @@ infixr 9 |.
 -- 4
 identity ::
   Lens a b a b
-identity =
-  error "todo: identity"
+identity f = f
 
 -- |
 --
@@ -576,13 +589,14 @@ identity =
 --
 -- >>> set (product fstL sndL) (("abc", 3), (4, "def")) ("ghi", "jkl")
 -- (("ghi",3),(4,"jkl"))
--- hint: alongsideLeft and right
 product ::
   Lens s t a b
   -> Lens q r c d
   -> Lens (s, q) (t, r) (a, c) (b, d)
-product _ _ =
-  error "todo: product"
+product r1 r2 p (a, c) =
+  getAlongsideRight (r2 (\b2 -> AlongsideRight (
+    getAlongsideLeft (r1 (\b1 -> AlongsideLeft (
+    p (b1,b2))) a))) c) 
 
 -- | An alias for @product@.
 (***) ::
@@ -611,8 +625,9 @@ choice ::
   Lens s t a b
   -> Lens q r a b
   -> Lens (Either s q) (Either t r) a b
-choice _ _ =
-  error "todo: choice"
+choice r1 r2 p = \case
+  Left s  -> fmap Left (r1 p s)
+  Right q -> fmap Right (r2 p q)
 
 -- | An alias for @choice@.
 (|||) ::
@@ -696,7 +711,7 @@ getSuburb ::
   Person
   -> String
 getSuburb =
-  error "todo: getSuburb"
+  get (suburbL |. addressL)
 
 -- |
 --
@@ -709,8 +724,8 @@ setStreet ::
   Person
   -> String
   -> Person
-setStreet =
-  error "todo: setStreet"
+setStreet = 
+  set (streetL |. addressL)
 
 -- |
 --
@@ -723,7 +738,7 @@ getAgeAndCountry ::
   (Person, Locality)
   -> (Int, String)
 getAgeAndCountry =
-  error "todo: getAgeAndCountry"
+  get (ageL *** countryL)
 
 -- |
 --
@@ -735,7 +750,7 @@ getAgeAndCountry =
 setCityAndLocality ::
   (Person, Address) -> (String, Locality) -> (Person, Address)
 setCityAndLocality =
-  error "todo: setCityAndLocality"
+  set ((cityL |. localityL |. addressL) *** localityL)
   
 -- |
 --
@@ -748,7 +763,7 @@ getSuburbOrCity ::
   Either Address Locality
   -> String
 getSuburbOrCity =
-  error "todo: getSuburbOrCity"
+  get (suburbL ||| cityL)
 
 -- |
 --
@@ -762,7 +777,7 @@ setStreetOrState ::
   -> String
   -> Either Person Locality
 setStreetOrState =
-  error "todo: setStreetOrState"
+  set (streetL |. addressL ||| stateL)
 
 -- |
 --
@@ -775,7 +790,9 @@ modifyCityUppercase ::
   Person
   -> Person
 modifyCityUppercase =
-  error "todo: modifyCityUppercase"
+  (cityL |. localityL |. addressL) %~ uppercase
+    where
+      uppercase = fmap toUpper
 
 -- |
 --
@@ -788,9 +805,7 @@ modifyIntAndLengthEven ::
   IntAnd [a]
   -> IntAnd Bool
 modifyIntAndLengthEven =
-  error "todo: modifyIntAndLengthEven"
-
-----
+  intAndL %~ (even . length)
 
 -- |
 --
@@ -798,8 +813,9 @@ modifyIntAndLengthEven =
 -- Locality "ABC" "DEF" "GHI"
 traverseLocality ::
   Traversal' Locality String
-traverseLocality =
-  error "todo: traverseLocality"
+traverseLocality p (Locality ci s co) =
+  Locality <$> p ci <*> p s <*> p co
+  
 
 -- |
 --
@@ -810,13 +826,17 @@ traverseLocality =
 -- IntOrIsNot "abc"
 intOrIntP ::
   Prism' (IntOr a) Int
-intOrIntP =
-  error "todo: intOrIntP"
+intOrIntP = 
+  prism IntOrIs $ \case 
+    IntOrIs i    -> Right i
+    IntOrIsNot a -> Left $ IntOrIsNot a
 
 intOrP ::
   Prism (IntOr a) (IntOr b) a b
 intOrP =
-  error "todo: intOrP"
+  prism IntOrIsNot $ \case 
+    IntOrIs i    -> Left $ IntOrIs i
+    IntOrIsNot a -> Right a
 
 -- |
 --
@@ -832,4 +852,5 @@ intOrLengthEven ::
   IntOr [a]
   -> IntOr Bool
 intOrLengthEven =
-  error "todo: intOrLengthEven"
+  -- p ~ (->), f ~ Identity
+  over intOrP (even . length)
