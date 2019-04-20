@@ -1,4 +1,5 @@
 {-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE TupleSections #-}
 
 module Lets.Lens (
   fmapT
@@ -131,7 +132,6 @@ fmapTAgain ::
   -> t a
   -> t b
 fmapTAgain =
-  -- over mapped (over sets = id)
   over traverse
 
 -- | Let's create a type-alias for this type of function.
@@ -165,7 +165,6 @@ set ::
 set f s b =
   getIdentity $ f (const (Identity b)) s  
 
-----
 
 -- | Observe that @foldMap@ can be recovered from @traverse@ using @Const@.
 --   The instance of applicative for Const m a is:
@@ -237,7 +236,7 @@ get ::
   -> s
   -> a
 get f =
-  getConst . f (Const . id)
+  getConst . f Const -- Const :: a -> Const a r
 
 ----
 
@@ -295,48 +294,67 @@ type Prism s t a b =
   p a (f b)
   -> p s (f t)
 
-_Left ::
-  Prism (Either a x) (Either b x) a b
-_Left =
-  prism Left $ either Right (Left . Right)
-
-
-_Right ::
-  Prism (Either x a) (Either x b) a b 
-_Right =
-  prism Right $ either (Left . Left) Right
-
 prism ::
   (b -> t)
   -> (s -> Either t a)
   -> Prism s t a b
-prism bt seta =
+-- c ~ t  (right :: p a b -> p (Either c a) (Either c b))
+-- Then we can just use pure.
+prism bt seta = 
   dimap seta (either pure (fmap bt)) . right
-  
+
+prism' :: 
+  (b -> s) 
+  -> (s -> Maybe a)
+  -> Prism s s a b
+prism' bs sma =
+  prism bs f
+    where
+      f s = maybe (Left s) Right $ sma s
+
+_Left ::
+  Prism (Either a x) (Either b x) a b
+_Left =
+  -- prism Left $ either Right (Left . Right)
+  dimap id (either (fmap Left) (pure . Right)) . left
+
+_Right ::
+  Prism (Either x a) (Either x b) a b 
+_Right =
+  -- prism Right $ either (Left . Left) Right
+  dimap id (either (pure . Left)  (fmap Right)) . right
   
 _Just ::
   Prism (Maybe a) (Maybe b) a b
 _Just =
-  prism Just $ maybe (Left Nothing) Right
+  prism 
+    Just
+    (maybe (Left Nothing) Right)
 
 _Nothing ::
   Prism (Maybe a) (Maybe a) () ()
 _Nothing =
-  prism (const Nothing) $ maybe (Left Nothing) (const $ Right ())
+  prism 
+    (const Nothing)
+    (maybe (Right ()) (Left . Just)) -- (Left Nothing) is also valid...
 
+-- hint: p ~ (->), f ~ Either a
 setP ::
   Prism s t a b
   -> s
   -> Either t a
-setP _ =
-  error "todo"
+setP p = 
+   swap . p Left
+   where 
+     swap = either Right Left
 
+-- hint: p ~ Tagged, f ~ Identity
 getP ::
   Prism s t a b
   -> b
   -> t
-getP _ _ =
-  error "todo: getP"
+getP p = 
+  getIdentity . getTagged . p . Tagged . Identity
 
 type Prism' a b =
   Prism a a b b
@@ -359,8 +377,10 @@ modify ::
   -> (a -> b)
   -> s
   -> t
-modify _ _ _ =
-  error "todo: modify"
+modify l f =
+  getIdentity . l (Identity . f)
+  
+-- type Lens s t a b = forall f. Functor f => (a -> f b) -> s -> f t
 
 -- | An alias for @modify@.
 (%~) ::
@@ -389,8 +409,9 @@ infixr 4 %~
   -> b
   -> s
   -> t
-(.~) _ _ _ =
-  error "todo: (.~)"
+(.~) l b =
+  getIdentity . l (const (Identity b))
+  
 
 infixl 5 .~
 
@@ -410,8 +431,8 @@ fmodify ::
   -> (a -> f b)
   -> s
   -> f t 
-fmodify _ _ _ =
-  error "todo: fmodify"
+fmodify l = 
+  l  
 
 -- |
 --
@@ -426,8 +447,8 @@ fmodify _ _ _ =
   -> f b
   -> s
   -> f t
-(|=) _ _ _ =
-  error "todo: (|=)"
+(|=) l = 
+  l . const
 
 infixl 5 |=
 
@@ -437,8 +458,8 @@ infixl 5 |=
 -- (30,"abc")
 fstL ::
   Lens (a, x) (b, x) a b
-fstL =
-  error "todo: fstL"
+fstL p (a, x) =
+  fmap (,x) (p a)
 
 -- |
 --
@@ -446,8 +467,9 @@ fstL =
 -- (13,"abcdef")
 sndL ::
   Lens (x, a) (x, b) a b
-sndL =
-  error "todo: sndL"
+sndL p (x, a) =
+  fmap (x,) (p a)
+  
 
 -- |
 --
@@ -554,6 +576,7 @@ identity =
 --
 -- >>> set (product fstL sndL) (("abc", 3), (4, "def")) ("ghi", "jkl")
 -- (("ghi",3),(4,"jkl"))
+-- hint: alongsideLeft and right
 product ::
   Lens s t a b
   -> Lens q r c d

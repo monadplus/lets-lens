@@ -33,6 +33,5 @@ TAGS
 *.html
 *.css
 *.png
-dist-newstyle
 *.o
 *.hi
